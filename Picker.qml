@@ -297,7 +297,7 @@ Item {
           width: parent.width
           height: root.footerHeight
           textFormat: Text.PlainText
-          text: "↑↓ select  ·  Enter open in terminal tab  ·  type to filter  ·  Esc close"
+          text: "↑↓ select  ·  Enter open in terminal  ·  type to filter  ·  Esc close"
           color: root.foreground
           opacity: 0.45
           font.family: root.fontFamily
