@@ -5,9 +5,11 @@
 # most recently focused one, which gets focused (switching workspace if needed).
 # With no Ghostty window open, a new terminal window is started instead.
 #
-# The command is typed into an interactive shell on purpose: the user's bash
+# The session runs in the new tab's interactive shell on purpose: the user's bash
 # `claude` wrapper pauses the folder's Remote Control service, which otherwise
-# keeps running the same session.
+# keeps running the same session. The id is handed to that shell through
+# $XDG_RUNTIME_DIR/phone-sessions/next, which scripts/shell-hook.bash (sourced at
+# the end of ~/.bashrc) claims. Without the hook, the command is typed instead.
 set -euo pipefail
 
 dry=0
@@ -39,17 +41,23 @@ fi
 # Every Ghostty tab is a live child process of the window's Ghostty process.
 tabs() { ps --ppid "$pid" -o stat= | grep -vc '^Z' || true; }
 
+handoff_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/phone-sessions
+handoff=$handoff_dir/next
+mkdir -p -m 700 "$handoff_dir"
+(umask 077; printf '%s\n' "$id" >"$handoff.tmp") && mv -f "$handoff.tmp" "$handoff"
+
 before=$(tabs)
 hyprctl -q eval "hl.dispatch(hl.dsp.focus({ window = 'address:$addr' }))"
 hyprctl -q eval "hl.dispatch(hl.dsp.send_shortcut({ mods = 'CTRL SHIFT', key = 'T', window = 'address:$addr' }))"
 
-# Type only once the new tab exists; otherwise the keys land in whatever tab was open.
-for _ in $(seq 60); do
-  (($(tabs) > before)) && break
-  sleep 0.05
+# The new tab's shell claims the hand-off almost at once when the hook is installed.
+for _ in $(seq 100); do
+  [[ -e $handoff ]] || exit 0
+  sleep 0.02
 done
-sleep 0.15
-# wtype types into whatever has keyboard focus, so check it is still this window.
+rm -f "$handoff"
+
+# No hook: type the command. Only once the new tab exists, or the keys land in whatever tab was open.
 if (($(tabs) <= before)) || [[ $(hyprctl activewindow -j | jq -r .address) != "$addr" ]]; then
   notify-send -a "Phone Sessions" "Couldn't open a terminal tab" "Run: $cmd" 2>/dev/null || true
   exit 1
