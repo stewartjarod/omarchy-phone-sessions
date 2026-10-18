@@ -5,7 +5,7 @@
   "version": "0.0.0",
   "author": "stewartjarod",
   "license": "MIT",
-  "description": "Hotkey picker for Claude Code sessions started from your phone; opens the one you pick in a new terminal tab.",
+  "description": "Hotkey picker for Claude Code sessions started from your phone; opens the one you pick in your default terminal (a new tab where it can).",
   "kinds": [
     "overlay"
   ],

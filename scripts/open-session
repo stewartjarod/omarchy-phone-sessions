@@ -52,7 +52,7 @@ open_window() {
   # quotes or `$`. This -c string is valid in bash, zsh and fish.
   exec "${launch[@]}" xdg-terminal-exec --dir="$cwd" -- \
     env PHONE_SESSION_ID="$id" PHONE_SESSION_NAME="$name" "$sh" -ic \
-    'claude --resume "$PHONE_SESSION_ID" --name="$PHONE_SESSION_NAME"; exec "$SHELL"'
+    'claude --resume "$PHONE_SESSION_ID" --name="$PHONE_SESSION_NAME"; exec "$SHELL"' >/dev/null 2>&1
 }
 
 if ((dry)); then
