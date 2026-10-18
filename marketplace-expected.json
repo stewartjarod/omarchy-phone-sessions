@@ -1,0 +1,4 @@
+{
+  "_note": "Capabilities the marketplace scanner may report for this plugin and that you accept knowingly (installer, privilege, package-manager, service-management, remote-build, sudoers-modification, bundled-executable-binary). Empty means the goal is outcome 'passed' (verified automatically). tests/marketplace-preflight.mjs fails when a new capability appears.",
+  "acceptedCapabilities": []
+}
