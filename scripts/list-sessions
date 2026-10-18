@@ -60,7 +60,7 @@ def scan(path, phone_only=True):
 
 def tab_name(info, limit=40):
     """Short name for the terminal tab: the session's title, else the start of its first prompt."""
-    text = info["title"] or info["prompt"]
+    text = info["title"] or info["prompt"] or os.path.basename(info["cwd"].rstrip("/")) or "Claude session"
     if len(text) <= limit:
         return text
     cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]

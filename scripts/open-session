@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # open-session [--dry-run] <cwd> <session-id>
 #
-# Resume a Claude Code session in a new tab of the nearest Ghostty window: the
-# most recently focused one, which gets focused (switching workspace if needed).
-# With no Ghostty window open, a new terminal window is started instead.
-#
-# The session runs in the new tab's interactive shell on purpose: the user's bash
-# `claude` wrapper pauses the folder's Remote Control service, which otherwise
-# keeps running the same session. The id is handed to that shell through
-# $XDG_RUNTIME_DIR/phone-sessions/next, which scripts/shell-hook.bash (sourced at
-# the end of ~/.bashrc) claims. Nothing is typed: wtype dropped Shift characters, and
-# its virtual keymap then broke send_shortcut ("key not found") until a real key press.
+# Resume a Claude Code session in the user's default terminal (xdg-terminal-exec):
+#   - Ghostty or kitty, with scripts/shell-hook.bash sourced at the end of ~/.bashrc:
+#     a new tab (Ctrl+Shift+T) in that terminal's most recently focused window, which
+#     gets focused. The id is handed over through $XDG_RUNTIME_DIR/phone-sessions/next
+#     and the tab's shell claims it.
+#   - Anything else (Alacritty, foot, other shells, no window open): a new terminal window.
+# Either way the session runs in the user's interactive shell, so shell functions such as a
+# `claude` wrapper apply. Nothing is typed: wtype dropped Shift characters, and its virtual
+# keymap broke send_shortcut ("key not found") until the next real key press.
 set -euo pipefail
 
 dry=0
@@ -21,25 +20,51 @@ id=${2:?usage: open-session [--dry-run] <cwd> <session-id>}
 [[ $id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "bad session id: $id" >&2; exit 2; }
 [[ -d $cwd ]] || { echo "no such folder: $cwd" >&2; exit 2; }
 
-# Shown in the failure notification; resume-here looks the folder up and uses `builtin cd`.
-cmd=". $(cd "$(dirname "$0")" && pwd)/resume-here $id"
-
-read -r addr pid < <(hyprctl clients -j | jq -r '
-  [.[] | select(.class == "com.mitchellh.ghostty" and .mapped)]
-  | sort_by(.focusHistoryID) | first // empty | "\(.address) \(.pid)"') || true
-
-if ((dry)); then
-  echo "window: ${addr:-none (new window)}"
-  echo "command: $cmd"
-  exit 0
-fi
-
-if [[ -z $addr ]]; then
-  exec setsid -f uwsm-app -- xdg-terminal-exec --dir="$cwd" -- bash -ic "claude --resume $id; exec bash"
-fi
+here=$(cd "$(dirname "$0")" && pwd)
+name=$("$here/list-sessions" --resume-info "$id" | sed -n 2p) || true
+[[ -n $name ]] || name=${cwd##*/}
 
 handoff_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/phone-sessions
 handoff=$handoff_dir/next
+
+# Only terminals with tabs and a default Ctrl+Shift+T get the tab path. Matching the default
+# terminal's class exactly also keeps Omarchy's own org.omarchy.* / TUI.* windows out.
+desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+desktop_id=${desktop_id%%:*}
+case $desktop_id in
+  com.mitchellh.ghostty.desktop) class=com.mitchellh.ghostty ;;
+  kitty.desktop) class=kitty ;;
+  *) class="" ;;
+esac
+
+addr=""
+# The hook marks $handoff_dir/hook whenever a shell with it starts.
+if [[ -n $class && -e $handoff_dir/hook ]]; then
+  addr=$(hyprctl clients -j | jq -r --arg c "$class" '
+    [.[] | select(.class == $c and .mapped)] | sort_by(.focusHistoryID) | first // empty | .address')
+fi
+
+open_window() {
+  local sh=${SHELL:-$(getent passwd "$(id -un)" | cut -d: -f7)}
+  local launch=(setsid -f)
+  command -v uwsm-app >/dev/null && launch+=(uwsm-app --)
+  # Id and name travel as environment variables: the name comes from a prompt and may hold
+  # quotes or `$`. This -c string is valid in bash, zsh and fish.
+  exec "${launch[@]}" xdg-terminal-exec --dir="$cwd" -- \
+    env PHONE_SESSION_ID="$id" PHONE_SESSION_NAME="$name" "$sh" -ic \
+    'claude --resume "$PHONE_SESSION_ID" --name="$PHONE_SESSION_NAME"; exec "$SHELL"'
+}
+
+if ((dry)); then
+  echo "terminal: ${desktop_id:-unknown}"
+  if [[ -n $addr ]]; then echo "opens: new tab in window $addr"; else echo "opens: new window"; fi
+  echo "folder: $cwd"
+  echo "name: $name"
+  exit 0
+fi
+
+[[ -n $addr ]] || open_window
+
 mkdir -p -m 700 "$handoff_dir"
 # An unclaimed hand-off must not be picked up by some later, unrelated shell.
 trap 'rm -f "$handoff" "$handoff.tmp"' EXIT
@@ -53,6 +78,9 @@ for _ in $(seq 100); do
   [[ -e $handoff ]] || exit 0
   sleep 0.02
 done
-notify-send -a "Phone Sessions" "Couldn't hand the session to a new tab" \
-  "Is scripts/shell-hook.bash sourced at the end of ~/.bashrc? Run: $cmd" 2>/dev/null || true
-exit 1
+
+# Unclaimed (shortcut rebound, hook gone): take it back, then use a window. If taking it back
+# fails, the tab's shell claimed it at the last moment and the session is already opening.
+mv "$handoff" "$handoff.reclaimed" 2>/dev/null || exit 0
+rm -f "$handoff.reclaimed"
+open_window
