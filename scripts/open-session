@@ -22,7 +22,7 @@ cmd="cd $(printf '%q' "$cwd") && claude --resume $id"
 
 read -r addr pid < <(hyprctl clients -j | jq -r '
   [.[] | select(.class == "com.mitchellh.ghostty" and .mapped)]
-  | sort_by(.focusHistoryID) | first | "\(.address) \(.pid)" // empty') || true
+  | sort_by(.focusHistoryID) | first // empty | "\(.address) \(.pid)"') || true
 
 if ((dry)); then
   echo "window: ${addr:-none (new window)}"
