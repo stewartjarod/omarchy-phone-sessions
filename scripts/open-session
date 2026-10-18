@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# open-session [--dry-run] <cwd> <session-id>
+#
+# Resume a Claude Code session in a new tab of the nearest Ghostty window: the
+# most recently focused one, which gets focused (switching workspace if needed).
+# With no Ghostty window open, a new terminal window is started instead.
+#
+# The command is typed into an interactive shell on purpose: the user's bash
+# `claude` wrapper pauses the folder's Remote Control service, which otherwise
+# keeps running the same session.
+set -euo pipefail
+
+dry=0
+[[ ${1:-} == --dry-run ]] && { dry=1; shift; }
+cwd=${1:?usage: open-session [--dry-run] <cwd> <session-id>}
+id=${2:?usage: open-session [--dry-run] <cwd> <session-id>}
+
+[[ $id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "bad session id: $id" >&2; exit 2; }
+[[ -d $cwd ]] || { echo "no such folder: $cwd" >&2; exit 2; }
+
+cmd="cd $(printf '%q' "$cwd") && claude --resume $id"
+
+read -r addr pid < <(hyprctl clients -j | jq -r '
+  [.[] | select(.class == "com.mitchellh.ghostty" and .mapped)]
+  | sort_by(.focusHistoryID) | first | "\(.address) \(.pid)" // empty') || true
+
+if ((dry)); then
+  echo "window: ${addr:-none (new window)}"
+  echo "command: $cmd"
+  exit 0
+fi
+
+if [[ -z $addr ]]; then
+  exec setsid -f uwsm-app -- xdg-terminal-exec --dir="$cwd" -- bash -ic "claude --resume $id; exec bash"
+fi
+
+# Every Ghostty tab is a live child process of the window's Ghostty process.
+tabs() { ps --ppid "$pid" -o stat= | grep -vc '^Z' || true; }
+
+before=$(tabs)
+hyprctl -q eval "hl.dispatch(hl.dsp.focus({ window = 'address:$addr' }))"
+hyprctl -q eval "hl.dispatch(hl.dsp.send_shortcut({ mods = 'CTRL SHIFT', key = 'T', window = 'address:$addr' }))"
+
+# Type only once the new tab exists; otherwise the keys land in whatever tab was open.
+for _ in $(seq 60); do
+  (($(tabs) > before)) && break
+  sleep 0.05
+done
+sleep 0.15
+# wtype types into whatever has keyboard focus, so check it is still this window.
+if (($(tabs) <= before)) || [[ $(hyprctl activewindow -j | jq -r .address) != "$addr" ]]; then
+  notify-send -a "Phone Sessions" "Couldn't open a terminal tab" "Run: $cmd" 2>/dev/null || true
+  exit 1
+fi
+wtype -- "$cmd"
+wtype -k Return

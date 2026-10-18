@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Print Claude Code sessions that were started from the phone, newest first, as JSON.
+
+Remote Control spawns phone sessions through the SDK, so their transcripts record
+entrypoint "sdk-cli"; terminal sessions record "cli". The interactive /resume
+picker hides SDK sessions, which is why this plugin exists.
+"""
+import glob
+import json
+import os
+import sys
+import time
+
+LIMIT = 60
+LIVE_SECONDS = 120
+
+
+def text_of(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text")
+    return ""
+
+
+def is_real_prompt(text):
+    t = text.strip()
+    return bool(t) and not t.startswith("<")
+
+
+def scan(path):
+    entrypoint = cwd = session_id = prompt = title = None
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if entrypoint is None and rec.get("entrypoint"):
+                entrypoint = rec["entrypoint"]
+                if entrypoint != "sdk-cli":
+                    return None
+            kind = rec.get("type")
+            if kind in ("custom-title", "ai-title"):
+                value = rec.get("customTitle") or rec.get("aiTitle") or rec.get("title")
+                # A name the user gave wins over a generated one.
+                if value and (kind == "custom-title" or not title or not title[1]):
+                    title = (value, kind == "custom-title")
+            if kind == "user" and not rec.get("isSidechain"):
+                cwd = cwd or rec.get("cwd")
+                session_id = session_id or rec.get("sessionId")
+                if prompt is None:
+                    text = text_of((rec.get("message") or {}).get("content"))
+                    if is_real_prompt(text):
+                        prompt = " ".join(text.split())[:240]
+    if entrypoint != "sdk-cli" or not cwd or not session_id:
+        return None
+    return {"id": session_id, "cwd": cwd, "title": title[0] if title else "", "prompt": prompt or ""}
+
+
+def main():
+    home = os.path.expanduser("~")
+    root = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "projects")
+    files = []
+    for path in glob.glob(os.path.join(root, "*", "*.jsonl")):
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        if st.st_size:
+            files.append((st.st_mtime, path))
+    files.sort(reverse=True)
+
+    now = time.time()
+    out = []
+    for mtime, path in files:
+        try:
+            info = scan(path)
+        except OSError:
+            continue
+        if not info or not os.path.isdir(info["cwd"]):
+            continue
+        cwd = info["cwd"]
+        info["folder"] = "~" + cwd[len(home):] if cwd == home or cwd.startswith(home + "/") else cwd
+        info["mtime"] = int(mtime)
+        info["live"] = now - mtime < LIVE_SECONDS
+        out.append(info)
+        if len(out) >= LIMIT:
+            break
+    json.dump(out, sys.stdout)
+
+
+if __name__ == "__main__":
+    main()

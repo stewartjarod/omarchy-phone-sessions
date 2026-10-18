@@ -4,10 +4,20 @@ Hotkey picker for Claude Code sessions started from your phone; opens the one yo
 
 Requires Omarchy 4.0.4 or newer (`OMARCHY_MIN_VERSION`).
 
+Sessions you start from the Claude app through `claude remote-control` run on this machine, but Claude
+Code's own `/resume` picker hides them: their transcripts are recorded as SDK sessions
+(`"entrypoint": "sdk-cli"`). This overlay lists exactly those sessions, newest first. Pick one and it
+focuses your most recently used Ghostty window, opens a new tab, and types
+`cd <folder> && claude --resume <id>` into it. With no Ghostty window open, it starts a new terminal instead.
+
+Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal
+stops the Remote Control process that is running it.
+
 ## Requirements
 
-List every external dependency (packages, CLIs, accounts) and how to get it. The marketplace submission
-checklist asks you to document them.
+- Ghostty (Omarchy's default terminal) with its default `Ctrl+Shift+T` new-tab binding
+- `wtype`, `jq`, `python3` (all present on a standard Omarchy install)
+- Claude Code with Remote Control sessions in `~/.claude/projects` (or `$CLAUDE_CONFIG_DIR/projects`)
 
 ## Install
 
@@ -15,6 +25,15 @@ checklist asks you to document them.
 omarchy plugin add https://github.com/stewartjarod/omarchy-phone-sessions.git --enable
 ```
 
+Bind a key in `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + ALT + R", "Resume a phone session", "omarchy-shell shell toggle stewartjarod.phone-sessions")
+```
+
+## Keys
+
+`↑`/`↓` (or `Ctrl+P`/`Ctrl+N`) select · `Enter` open · type to filter by folder or prompt · `Esc` clears the filter, then closes.
 
 ## Remove
 
@@ -22,39 +41,25 @@ omarchy plugin add https://github.com/stewartjarod/omarchy-phone-sessions.git --
 omarchy plugin remove stewartjarod.phone-sessions
 ```
 
-## Settings
-
-| Setting | Default | What it does |
-|---|---|---|
-| `greeting` | `Hello` | Example setting. Replace it. |
+Then delete the bind.
 
 ## Where things are stored
 
-| What | Where | Notes |
-|---|---|---|
-| Plugin state | `~/.local/state/phone-sessions/` | Created mode 0700, files 0600. Nothing is stored in the plugin directory. |
+Nothing. The plugin reads transcripts on each open and writes no files.
 
 ## Privacy
 
-State what the plugin reads, what leaves the machine and where it goes, and that credentials are never
-written to files, command lines or logs. (The marketplace reviews this; keep it accurate.)
+The plugin reads `~/.claude/projects/*/*.jsonl` locally, to get each session's folder and first prompt.
+Nothing leaves the machine. The only thing it types is the resume command, into a terminal tab it has just
+opened, and only if that window still has keyboard focus.
 
 ## Development
 
 ```sh
-tests/run-all.sh        # lint, theme + token checks, unit tests (no desktop needed)
-tests/smoke.sh          # live check against the running shell
-scripts/release.sh      # cut a release from Conventional Commits
+tests/run-all.sh                       # lint, theme + token checks, unit tests (no desktop needed)
+scripts/open-session --dry-run DIR ID  # show which window and command would be used
+tests/smoke.sh                         # live check against the running shell
+scripts/release.sh                     # cut a release from Conventional Commits
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md).
-
-## Before you publish (delete this list when done)
-
-- [ ] Replace the example widget, setting and `ExampleModel.js`
-- [ ] Add a `preview.png` screenshot (use sample data; it shows your desktop otherwise)
-- [ ] Check it under a light AND a dark theme, and a square and a rounded one
-- [ ] Fill `barWidget.category` and `description` in `manifest.json`
-- [ ] `tests/fetch-marketplace.sh`, then `tests/run-all.sh`: aim for marketplace outcome `passed` (see AGENTS.md)
-- [ ] List dependencies in a Requirements section (the marketplace checklist asks for it)
-- [ ] `git remote add origin ...`, push, then `scripts/release.sh` for 0.1.0
