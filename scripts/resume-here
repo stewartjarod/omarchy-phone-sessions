@@ -1,0 +1,18 @@
+# Sourced, not run: open-session types ". <this file> <session-id>" into a new terminal tab.
+# Sourcing keeps the user's shell functions (e.g. a `claude` wrapper) in play, and the typed
+# text stays free of Shift characters, which wtype can drop. The session's folder is looked up
+# here instead of being typed.
+
+__ps_id=$1
+if [[ ! $__ps_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+  echo "phone-sessions: bad session id: $__ps_id" >&2
+elif ! __ps_dir=$("$(dirname "${BASH_SOURCE[0]}")/list-sessions" --cwd "$__ps_id"); then
+  echo "phone-sessions: no transcript for session $__ps_id" >&2
+elif ! builtin cd -- "$__ps_dir"; then
+  echo "phone-sessions: folder is gone: $__ps_dir" >&2
+else
+  # Clean up before claude starts: it can run for hours in this shell.
+  unset __ps_dir
+  claude --resume "$__ps_id"
+fi
+unset __ps_id __ps_dir

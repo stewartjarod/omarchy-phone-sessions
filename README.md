@@ -8,7 +8,7 @@ Sessions you start from the Claude app through `claude remote-control` run on th
 Code's own `/resume` picker hides them: their transcripts are recorded as SDK sessions
 (`"entrypoint": "sdk-cli"`). This overlay lists exactly those sessions, newest first. Pick one and it
 focuses your most recently used Ghostty window, opens a new tab, and types
-`cd <folder> && claude --resume <id>` into it. With no Ghostty window open, it starts a new terminal instead.
+`. <plugin>/scripts/resume-here <id>` into it, which `cd`s to the session's folder and runs `claude --resume <id>` in that shell. With no Ghostty window open, it starts a new terminal instead.
 
 Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal
 stops the Remote Control process that is running it.
@@ -28,7 +28,7 @@ omarchy plugin add https://github.com/stewartjarod/omarchy-phone-sessions.git --
 Bind a key in `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + R", "Resume a phone session", "omarchy-shell shell toggle stewartjarod.phone-sessions")
+o.bind("SUPER + SHIFT + R", "Resume a phone session", "omarchy-shell shell toggle stewartjarod.phone-sessions")
 ```
 
 ## Keys

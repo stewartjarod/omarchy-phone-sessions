@@ -58,9 +58,31 @@ def scan(path):
     return {"id": session_id, "cwd": cwd, "title": title[0] if title else "", "prompt": prompt or ""}
 
 
+def cwd_of(root, session_id):
+    for path in glob.glob(os.path.join(root, "*", glob.escape(session_id) + ".jsonl")):
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("cwd"):
+                    return rec["cwd"]
+    return None
+
+
 def main():
     home = os.path.expanduser("~")
     root = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "projects")
+
+    # list-sessions --cwd <id>: print the folder a session ran in (used by resume-here).
+    if len(sys.argv) == 3 and sys.argv[1] == "--cwd":
+        cwd = cwd_of(root, sys.argv[2])
+        if not cwd:
+            sys.exit(1)
+        print(cwd)
+        return
+
     files = []
     for path in glob.glob(os.path.join(root, "*", "*.jsonl")):
         try:

@@ -18,7 +18,9 @@ id=${2:?usage: open-session [--dry-run] <cwd> <session-id>}
 [[ $id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "bad session id: $id" >&2; exit 2; }
 [[ -d $cwd ]] || { echo "no such folder: $cwd" >&2; exit 2; }
 
-cmd="cd $(printf '%q' "$cwd") && claude --resume $id"
+# What gets typed: no Shift characters (wtype dropped the capital in a typed folder path), and
+# no folder at all; resume-here looks it up and cds with `builtin cd` (cd may be zoxide).
+cmd=". $(cd "$(dirname "$0")" && pwd)/resume-here $id"
 
 read -r addr pid < <(hyprctl clients -j | jq -r '
   [.[] | select(.class == "com.mitchellh.ghostty" and .mapped)]
