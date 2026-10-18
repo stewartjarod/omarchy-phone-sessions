@@ -5,13 +5,19 @@
 __ps_id=$1
 if [[ ! $__ps_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
   echo "phone-sessions: bad session id: $__ps_id" >&2
-elif ! __ps_dir=$("$(dirname "${BASH_SOURCE[0]}")/list-sessions" --cwd "$__ps_id"); then
+elif ! __ps_info=$("$(dirname "${BASH_SOURCE[0]}")/list-sessions" --resume-info "$__ps_id"); then
   echo "phone-sessions: no transcript for session $__ps_id" >&2
+elif ! { IFS= read -r __ps_dir; IFS= read -r __ps_name; } <<<"$__ps_info"; then
+  echo "phone-sessions: could not read session $__ps_id" >&2
 elif ! builtin cd -- "$__ps_dir"; then
   echo "phone-sessions: folder is gone: $__ps_dir" >&2
 else
   # Clean up before claude starts: it can run for hours in this shell.
-  unset __ps_dir
-  claude --resume "$__ps_id"
+  __ps_args=(--resume "$__ps_id")
+  # --name sets the terminal (tab) title. One "--name=..." word, so a wrapper scanning
+  # for words like "update" can't mistake a prompt for a subcommand.
+  [[ -n $__ps_name ]] && __ps_args+=("--name=$__ps_name")
+  unset __ps_dir __ps_info __ps_name
+  claude "${__ps_args[@]}"
 fi
-unset __ps_id __ps_dir
+unset __ps_id __ps_dir __ps_info __ps_name __ps_args

@@ -8,7 +8,9 @@ Sessions you start from the Claude app through `claude remote-control` run on th
 Code's own `/resume` picker hides them: their transcripts are recorded as SDK sessions
 (`"entrypoint": "sdk-cli"`). This overlay lists exactly those sessions, newest first. Pick one and it
 focuses your most recently used Ghostty window and opens a new tab. The tab's shell picks the session up
-through a small hook in `~/.bashrc`, `cd`s to the session's folder and runs `claude --resume <id>`. Nothing is
+through a small hook in `~/.bashrc`, `cd`s to the session's folder and runs `claude --resume <id> --name=<name>`.
+The name (the session's title, else the start of its first prompt) becomes the tab title. It is also saved
+as the session's display name, so `/resume` shows it too. Nothing is
 typed into the terminal. With no Ghostty window open, it starts a new terminal instead.
 
 Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal

@@ -28,7 +28,7 @@ def is_real_prompt(text):
     return bool(t) and not t.startswith("<")
 
 
-def scan(path):
+def scan(path, phone_only=True):
     entrypoint = cwd = session_id = prompt = title = None
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -38,7 +38,7 @@ def scan(path):
                 continue
             if entrypoint is None and rec.get("entrypoint"):
                 entrypoint = rec["entrypoint"]
-                if entrypoint != "sdk-cli":
+                if phone_only and entrypoint != "sdk-cli":
                     return None
             kind = rec.get("type")
             if kind in ("custom-title", "ai-title"):
@@ -53,21 +53,25 @@ def scan(path):
                     text = text_of((rec.get("message") or {}).get("content"))
                     if is_real_prompt(text):
                         prompt = " ".join(text.split())[:240]
-    if entrypoint != "sdk-cli" or not cwd or not session_id:
+    if (phone_only and entrypoint != "sdk-cli") or not cwd or not session_id:
         return None
     return {"id": session_id, "cwd": cwd, "title": title[0] if title else "", "prompt": prompt or ""}
 
 
-def cwd_of(root, session_id):
+def tab_name(info, limit=40):
+    """Short name for the terminal tab: the session's title, else the start of its first prompt."""
+    text = info["title"] or info["prompt"]
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]
+    return cut.rstrip(" .,;:-") + "…"
+
+
+def resume_info(root, session_id):
     for path in glob.glob(os.path.join(root, "*", glob.escape(session_id) + ".jsonl")):
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                try:
-                    rec = json.loads(line)
-                except ValueError:
-                    continue
-                if rec.get("cwd"):
-                    return rec["cwd"]
+        info = scan(path, phone_only=False)
+        if info:
+            return info
     return None
 
 
@@ -75,12 +79,13 @@ def main():
     home = os.path.expanduser("~")
     root = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "projects")
 
-    # list-sessions --cwd <id>: print the folder a session ran in (used by resume-here).
-    if len(sys.argv) == 3 and sys.argv[1] == "--cwd":
-        cwd = cwd_of(root, sys.argv[2])
-        if not cwd:
+    # list-sessions --resume-info <id>: the session's folder, then a tab name (used by resume-here).
+    if len(sys.argv) == 3 and sys.argv[1] == "--resume-info":
+        info = resume_info(root, sys.argv[2])
+        if not info:
             sys.exit(1)
-        print(cwd)
+        print(info["cwd"])
+        print(tab_name(info).replace("\n", " "))
         return
 
     files = []
