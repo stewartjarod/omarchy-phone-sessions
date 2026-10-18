@@ -9,7 +9,8 @@
 # `claude` wrapper pauses the folder's Remote Control service, which otherwise
 # keeps running the same session. The id is handed to that shell through
 # $XDG_RUNTIME_DIR/phone-sessions/next, which scripts/shell-hook.bash (sourced at
-# the end of ~/.bashrc) claims. Without the hook, the command is typed instead.
+# the end of ~/.bashrc) claims. Nothing is typed: wtype dropped Shift characters, and
+# its virtual keymap then broke send_shortcut ("key not found") until a real key press.
 set -euo pipefail
 
 dry=0
@@ -20,8 +21,7 @@ id=${2:?usage: open-session [--dry-run] <cwd> <session-id>}
 [[ $id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "bad session id: $id" >&2; exit 2; }
 [[ -d $cwd ]] || { echo "no such folder: $cwd" >&2; exit 2; }
 
-# What gets typed: no Shift characters (wtype dropped the capital in a typed folder path), and
-# no folder at all; resume-here looks it up and cds with `builtin cd` (cd may be zoxide).
+# Shown in the failure notification; resume-here looks the folder up and uses `builtin cd`.
 cmd=". $(cd "$(dirname "$0")" && pwd)/resume-here $id"
 
 read -r addr pid < <(hyprctl clients -j | jq -r '
@@ -38,29 +38,21 @@ if [[ -z $addr ]]; then
   exec setsid -f uwsm-app -- xdg-terminal-exec --dir="$cwd" -- bash -ic "claude --resume $id; exec bash"
 fi
 
-# Every Ghostty tab is a live child process of the window's Ghostty process.
-tabs() { ps --ppid "$pid" -o stat= | grep -vc '^Z' || true; }
-
 handoff_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/phone-sessions
 handoff=$handoff_dir/next
 mkdir -p -m 700 "$handoff_dir"
+# An unclaimed hand-off must not be picked up by some later, unrelated shell.
+trap 'rm -f "$handoff" "$handoff.tmp"' EXIT
 (umask 077; printf '%s\n' "$id" >"$handoff.tmp") && mv -f "$handoff.tmp" "$handoff"
 
-before=$(tabs)
 hyprctl -q eval "hl.dispatch(hl.dsp.focus({ window = 'address:$addr' }))"
-hyprctl -q eval "hl.dispatch(hl.dsp.send_shortcut({ mods = 'CTRL SHIFT', key = 'T', window = 'address:$addr' }))"
+hyprctl -q eval "hl.dispatch(hl.dsp.send_shortcut({ mods = 'CTRL SHIFT', key = 'T', window = 'address:$addr' }))" || true
 
-# The new tab's shell claims the hand-off almost at once when the hook is installed.
+# The new tab's shell claims the hand-off as it starts.
 for _ in $(seq 100); do
   [[ -e $handoff ]] || exit 0
   sleep 0.02
 done
-rm -f "$handoff"
-
-# No hook: type the command. Only once the new tab exists, or the keys land in whatever tab was open.
-if (($(tabs) <= before)) || [[ $(hyprctl activewindow -j | jq -r .address) != "$addr" ]]; then
-  notify-send -a "Phone Sessions" "Couldn't open a terminal tab" "Run: $cmd" 2>/dev/null || true
-  exit 1
-fi
-wtype -- "$cmd"
-wtype -k Return
+notify-send -a "Phone Sessions" "Couldn't hand the session to a new tab" \
+  "Is scripts/shell-hook.bash sourced at the end of ~/.bashrc? Run: $cmd" 2>/dev/null || true
+exit 1

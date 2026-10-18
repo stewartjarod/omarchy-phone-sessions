@@ -1,7 +1,6 @@
-# Sourced, not run: open-session types ". <this file> <session-id>" into a new terminal tab.
-# Sourcing keeps the user's shell functions (e.g. a `claude` wrapper) in play, and the typed
-# text stays free of Shift characters, which wtype can drop. The session's folder is looked up
-# here instead of being typed.
+# Sourced, not run: ". <this file> <session-id>", from shell-hook.bash in a new terminal tab.
+# Sourcing keeps the user's shell functions (e.g. a `claude` wrapper) in play. The session's
+# folder is looked up from its transcript.
 
 __ps_id=$1
 if [[ ! $__ps_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
