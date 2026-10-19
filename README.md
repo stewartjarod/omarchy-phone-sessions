@@ -44,6 +44,10 @@ anything that defines a `claude` wrapper). Without it, sessions open in a new wi
 [[ -f ~/.config/omarchy/plugins/stewartjarod.phone-sessions/scripts/shell-hook.bash ]] && source ~/.config/omarchy/plugins/stewartjarod.phone-sessions/scripts/shell-hook.bash
 ```
 
+The hook runs this plugin's code in every interactive bash you start, so plugin updates reach your
+terminals too, not just omarchy-shell. Apart from creating its folder once, it runs only shell builtins
+until a hand-off is waiting.
+
 Bind a key in `~/.config/hypr/bindings.lua`:
 
 ```lua
