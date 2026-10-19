@@ -40,6 +40,8 @@ addr=""
 if [[ -n $class && -e $handoff_dir/hook ]]; then
   addr=$(hyprctl clients -j | jq -r --arg c "$class" '
     [.[] | select(.class == $c and .mapped)] | sort_by(.focusHistoryID) | first // empty | .address')
+  # It goes into a Lua string below: accept only what Hyprland prints for an address.
+  [[ $addr =~ ^0x[0-9a-f]+$ ]] || addr=""
 fi
 
 open_window() {
