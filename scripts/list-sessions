@@ -67,6 +67,11 @@ def tab_name(info, limit=40):
     return cut.rstrip(" .,;:-") + "…"
 
 
+def printable(text):
+    """Drop control characters, so a name can't end or inject a terminal escape sequence."""
+    return "".join(" " if ord(c) < 32 or 0x7F <= ord(c) < 0xA0 else c for c in text)
+
+
 def resume_info(root, session_id):
     for path in glob.glob(os.path.join(root, "*", glob.escape(session_id) + ".jsonl")):
         info = scan(path, phone_only=False)
@@ -80,12 +85,17 @@ def main():
     root = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "projects")
 
     # list-sessions --resume-info <id>: the session's folder, then a tab name (used by resume-here).
-    if len(sys.argv) == 3 and sys.argv[1] == "--resume-info":
+    # list-sessions --set-title <id>: set the terminal's title to the tab name (used by open-session).
+    # The name comes from a prompt, so it is never put on a command line (other users can read those).
+    if len(sys.argv) == 3 and sys.argv[1] in ("--resume-info", "--set-title"):
         info = resume_info(root, sys.argv[2])
         if not info:
             sys.exit(1)
+        if sys.argv[1] == "--set-title":
+            sys.stdout.write("\033]2;" + printable(tab_name(info)) + "\007")
+            return
         print(info["cwd"])
-        print(tab_name(info).replace("\n", " "))
+        print(printable(tab_name(info)))
         return
 
     files = []

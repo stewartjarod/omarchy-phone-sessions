@@ -21,8 +21,6 @@ id=${2:?usage: open-session [--dry-run] <cwd> <session-id>}
 [[ -d $cwd ]] || { echo "no such folder: $cwd" >&2; exit 2; }
 
 here=$(cd "$(dirname "$0")" && pwd)
-name=$("$here/list-sessions" --resume-info "$id" | sed -n 2p) || true
-[[ -n $name ]] || name=${cwd##*/}
 
 handoff_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/phone-sessions
 handoff=$handoff_dir/next
@@ -48,18 +46,18 @@ open_window() {
   local sh=${SHELL:-$(getent passwd "$(id -un)" | cut -d: -f7)}
   local launch=(setsid -f)
   command -v uwsm-app >/dev/null && launch+=(uwsm-app --)
-  # Id and name travel as environment variables: the name comes from a prompt and may hold
-  # quotes or `$`. This -c string is valid in bash, zsh and fish.
+  # The session's name comes from a prompt, so it never goes on a command line (this one ends
+  # up in the terminal's own argv, which other local users can read): list-sessions looks it
+  # up inside the window and sets the title. This -c string is valid in bash, zsh and fish.
   exec "${launch[@]}" xdg-terminal-exec --dir="$cwd" -- \
-    env PHONE_SESSION_ID="$id" PHONE_SESSION_NAME="$name" "$sh" -ic \
-    'claude --resume "$PHONE_SESSION_ID" --name="$PHONE_SESSION_NAME"; exec "$SHELL"' >/dev/null 2>&1
+    env PHONE_SESSION_ID="$id" PHONE_SESSIONS_LIST="$here/list-sessions" "$sh" -ic \
+    '"$PHONE_SESSIONS_LIST" --set-title "$PHONE_SESSION_ID"; claude --resume "$PHONE_SESSION_ID"; exec "$SHELL"' >/dev/null 2>&1
 }
 
 if ((dry)); then
   echo "terminal: ${desktop_id:-unknown}"
   if [[ -n $addr ]]; then echo "opens: new tab in window $addr"; else echo "opens: new window"; fi
   echo "folder: $cwd"
-  echo "name: $name"
   exit 0
 fi
 

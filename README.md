@@ -8,15 +8,16 @@ Sessions you start from the Claude app through `claude remote-control` run on th
 Code's own `/resume` picker hides them: their transcripts are recorded as SDK sessions
 (`"entrypoint": "sdk-cli"`). This overlay lists exactly those sessions, newest first. Pick one and it opens
 in your default terminal (the one `xdg-terminal-exec` and `omarchy default terminal` use), in the session's
-folder, running `claude --resume <id> --name=<name>`:
+folder, running `claude --resume <id>`:
 
 | Default terminal | Opens |
 |---|---|
 | Ghostty, kitty | A new tab in that terminal's most recently focused window, if the bash hook below is installed. Otherwise a new window. |
 | Alacritty, foot, anything else | A new window. |
 
-The name (the session's title, else the start of its first prompt) becomes the tab or window title. It is
-also saved as the session's display name, so `/resume` shows it too. The session always runs in your
+The tab or window is titled with the session's title, else the start of its first prompt, until Claude
+sets its own title. That text is set with a terminal escape sequence and never put on a command line,
+where other users on the machine could read it. The session always runs in your
 interactive shell, so shell functions such as a `claude` wrapper apply. Nothing is typed into a terminal.
 
 Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal

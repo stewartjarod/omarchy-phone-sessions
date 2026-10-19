@@ -12,11 +12,11 @@ elif ! { IFS= read -r __ps_dir; IFS= read -r __ps_name; } <<<"$__ps_info"; then
 elif ! builtin cd -- "$__ps_dir"; then
   echo "phone-sessions: folder is gone: $__ps_dir" >&2
 else
+  # Title the tab with a builtin. The name comes from a prompt, so it never goes on a command
+  # line: other local users can read those (claude --name=... would keep it there for hours).
+  [[ -n $__ps_name ]] && printf '\e]2;%s\a' "$__ps_name"
   # Clean up before claude starts: it can run for hours in this shell.
   __ps_args=(--resume "$__ps_id")
-  # --name sets the terminal (tab) title. One "--name=..." word, so a wrapper scanning
-  # for words like "update" can't mistake a prompt for a subcommand.
-  [[ -n $__ps_name ]] && __ps_args+=("--name=$__ps_name")
   unset __ps_dir __ps_info __ps_name
   claude "${__ps_args[@]}"
 fi
