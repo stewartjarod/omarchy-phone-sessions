@@ -6,6 +6,12 @@ All notable changes to this plugin are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-18
+
+### Fixed
+- keep the session name off command lines
+- accept only a Hyprland address in the focus/new-tab Lua string
+
 ## [0.1.1] - 2026-10-18
 
 ### Fixed
@@ -24,6 +30,7 @@ All notable changes to this plugin are listed here. The format follows
 - type a Shift-free resume command and look the folder up in the tab
 - never type into the terminal; hand-off only
 
-[Unreleased]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/stewartjarod/omarchy-phone-sessions/releases/tag/v0.1.0
