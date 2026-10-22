@@ -347,6 +347,9 @@ Item {
               height: root.rowHeight
               radius: root.cornerRadius
               color: hasCursor ? root.selectedBackground : "transparent"
+              // The load row is an action, not a session: outline it.
+              border.color: root.border
+              border.width: modelData.loadMore ? 1 : 0
 
               Column {
                 anchors.left: parent.left
