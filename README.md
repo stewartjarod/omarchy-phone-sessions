@@ -20,7 +20,10 @@ sets its own title. That text is set with a terminal escape sequence and never p
 where other users on the machine could read it. The session always runs in your
 interactive shell, so shell functions such as a `claude` wrapper apply. Nothing is typed into a terminal.
 
-Each tab lists up to 20 sessions from the last week, newest first.
+Each tab opens with up to 20 sessions from the last week, newest first. When older ones exist, the
+list ends with a **Load older sessions** row: its caption says what is listed so far ("Showing the last
+7 days", "Showing the 20 newest"), and `Enter` on it adds the next 20, going back past the week. Typing
+filters only the sessions loaded so far, so load more if a session you want doesn't match.
 
 Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal
 stops the Remote Control process that is running it.
@@ -65,7 +68,7 @@ o.bind("SUPER + SHIFT + R", "Resume a phone session", "omarchy-shell shell toggl
 
 ## Keys
 
-`↑`/`↓` (or `Ctrl+P`/`Ctrl+N`) select · `Enter` open · `Tab` switch between Phone and Closed · type to filter by folder or prompt · `Esc` clears the filter, then closes.
+`↑`/`↓` (or `Ctrl+P`/`Ctrl+N`) select (`↑` from the top jumps to **Load older sessions**) · `Enter` open, or load older · `Tab` switch between Phone and Closed · type to filter by folder or prompt · `Esc` clears the filter, then closes.
 
 ## Remove
 

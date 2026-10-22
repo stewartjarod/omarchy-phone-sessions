@@ -9,6 +9,13 @@ With --closed it prints terminal sessions that no running
 Claude process holds (the terminal was closed, or the machine restarted), each with
 the state it stopped in: "limit" (a usage limit stopped it), "working" (closed
 mid-task) or "idle" (closed after a finished reply).
+
+Output: {"sessions": [...], "more": bool, "before": cursor, "stoppedBy": "days" | "count" | "end",
+"days": MAX_AGE_DAYS}.
+The first page holds up to LIMIT sessions from the last MAX_AGE_DAYS; "stoppedBy" says whether
+it reached that cutoff or the row limit. --before <cursor> fetches the next LIMIT sessions after
+the last page, with no age cutoff. "more" is true when at least one older session exists. The
+cursor is "<mtime>/<file name>", so sessions with the same mtime are neither skipped nor repeated.
 """
 import glob
 import json
@@ -17,7 +24,7 @@ import re
 import sys
 import time
 
-# Both tabs list at most LIMIT sessions from the last MAX_AGE_DAYS, newest first.
+# Each page lists at most LIMIT sessions, newest first; the first one only from the last MAX_AGE_DAYS.
 LIMIT = 20
 MAX_AGE_DAYS = 7
 LIVE_SECONDS = 120
@@ -103,6 +110,24 @@ def scan(path, entrypoint_wanted="sdk-cli", whole=True):
             "state": state}
 
 
+def quick_match(path, entrypoint_wanted):
+    """(id, cwd) if the transcript has the wanted entrypoint, reading only as far as needed."""
+    entrypoint = None
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for _, line in zip(range(HEAD_LINES), fh):
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if entrypoint is None and rec.get("entrypoint"):
+                entrypoint = rec["entrypoint"]
+                if entrypoint != entrypoint_wanted:
+                    return None
+            if rec.get("type") == "user" and not rec.get("isSidechain") and rec.get("cwd") and rec.get("sessionId"):
+                return (rec["sessionId"], rec["cwd"]) if entrypoint == entrypoint_wanted else None
+    return None
+
+
 def proc_start(pid):
     """The process's start time in clock ticks, or None if it is gone."""
     try:
@@ -172,8 +197,15 @@ def main():
         print(printable(tab_name(info)))
         return
 
-    closed = sys.argv[1:] == ["--closed"]
+    args = sys.argv[1:]
+    closed = "--closed" in args
+    before = None
+    if "--before" in args:
+        stamp, _, name = args[args.index("--before") + 1].partition("/")
+        before = (float(stamp), name)
+    wanted = "cli" if closed else "sdk-cli"
     now = time.time()
+    cutoff = now - MAX_AGE_DAYS * 86400 if before is None else None
     running = running_ids(config) if closed else set()
 
     files = []
@@ -185,15 +217,32 @@ def main():
         if not st.st_size:
             continue
         # Cheap filters first: transcripts can be many megabytes.
-        if now - st.st_mtime > MAX_AGE_DAYS * 86400 or os.path.basename(path)[:-len(".jsonl")] in running:
+        name = os.path.basename(path)
+        if (before is not None and (st.st_mtime, name) >= before) or name[:-len(".jsonl")] in running:
             continue
-        files.append((st.st_mtime, path))
+        files.append((st.st_mtime, name, path))
     files.sort(reverse=True)
 
     out = []
-    for mtime, path in files:
+    more = False
+    stopped_by = "end"
+    for mtime, name, path in files:
+        if stopped_by == "end" and cutoff is not None and mtime < cutoff:
+            stopped_by = "days"
+        elif stopped_by == "end" and len(out) >= LIMIT:
+            stopped_by = "count"
+        if stopped_by != "end":
+            # The page is full; only find out whether an older session exists.
+            try:
+                match = quick_match(path, wanted)
+            except OSError:
+                continue
+            if match and match[0] not in running and os.path.isdir(match[1]):
+                more = True
+                break
+            continue
         try:
-            info = scan(path, "cli" if closed else "sdk-cli", whole=False)
+            info = scan(path, wanted, whole=False)
         except OSError:
             continue
         if not info or not os.path.isdir(info["cwd"]) or info["id"] in running:
@@ -201,14 +250,22 @@ def main():
         cwd = info["cwd"]
         info["folder"] = "~" + cwd[len(home):] if cwd == home or cwd.startswith(home + "/") else cwd
         info["mtime"] = int(mtime)
+        info["_cursor"] = "%r/%s" % (mtime, name)
         # "live" means running on the phone; a closed terminal session never is.
         info["live"] = not closed and now - mtime < LIVE_SECONDS
         if not closed:
             del info["state"]
         out.append(info)
-        if len(out) >= LIMIT:
-            break
-    json.dump(out, sys.stdout)
+    if not more:
+        stopped_by = "end"
+    if out:
+        cursor = out[-1]["_cursor"]
+    else:
+        cursor = "%r/%s" % before if before is not None else "%r/" % now
+    for info in out:
+        del info["_cursor"]
+    json.dump({"sessions": out, "more": more, "before": cursor, "stoppedBy": stopped_by, "days": MAX_AGE_DAYS},
+              sys.stdout)
 
 
 if __name__ == "__main__":

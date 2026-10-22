@@ -61,3 +61,29 @@ test("needsAttention flags live phone sessions and unfinished closed ones", () =
   assert.equal(Model.needsAttention({ state: "idle" }), false)
   assert.equal(Model.needsAttention({ live: false }), false)
 })
+
+test("parsePage reads a page and still accepts a bare array", () => {
+  const page = Model.parsePage(JSON.stringify({ sessions: [...sessions, { id: "c" }], more: true, before: "12.5/a.jsonl", stoppedBy: "count" }))
+  assert.equal(page.sessions.length, 2)
+  assert.equal(page.more, true)
+  assert.equal(page.before, "12.5/a.jsonl")
+  assert.equal(page.stoppedBy, "count")
+  const bare = Model.parsePage(JSON.stringify(sessions))
+  assert.equal(bare.sessions.length, 2)
+  assert.equal(bare.more, false)
+  assert.deepEqual(Model.parsePage("junk"), { sessions: [], more: false, before: "", stoppedBy: "end", days: 7 })
+  assert.equal(Model.parsePage(JSON.stringify({ sessions, days: 3 })).days, 3)
+  assert.equal(Model.parse(JSON.stringify({ sessions })).length, 2)
+})
+
+test("merge appends a later page without repeating a session", () => {
+  const merged = Model.merge(sessions, [{ id: "b" }, { id: "c" }])
+  assert.deepEqual(merged.map(s => s.id), ["a", "b", "c"])
+})
+
+test("loadCaption says what the list holds", () => {
+  assert.equal(Model.loadCaption(0, "days", 7, false), "Nothing in the last 7 days")
+  assert.equal(Model.loadCaption(3, "days", 7, false), "Showing the last 7 days")
+  assert.equal(Model.loadCaption(20, "count", 7, false), "Showing the 20 newest")
+  assert.equal(Model.loadCaption(20, "count", 7, true), "The filter only searches loaded sessions")
+})

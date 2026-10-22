@@ -27,7 +27,7 @@ const toolCall = () => ({ type: "assistant", message: { role: "assistant", conte
 const toolResult = (id) =>
   ({ type: "user", cwd, sessionId: id, message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: "ok" }] } })
 
-function transcript(records, filler = 0) {
+function transcript(records, filler = 0, dir = projects) {
   const id = crypto.randomUUID()
   const rows = records.map((r) => (typeof r === "function" ? r(id) : r))
   const lines = rows.slice(0, 1).map((r) => JSON.stringify(r))
@@ -35,7 +35,7 @@ function transcript(records, filler = 0) {
   // reads only its start and end.
   for (let i = 0; i < filler; i++) lines.push(JSON.stringify({ type: "progress", data: "x".repeat(1000) }))
   lines.push(...rows.slice(1).map((r) => JSON.stringify(r)))
-  fs.writeFileSync(path.join(projects, id + ".jsonl"), lines.join("\n") + "\n")
+  fs.writeFileSync(path.join(dir, id + ".jsonl"), lines.join("\n") + "\n")
   return id
 }
 
@@ -72,9 +72,10 @@ fs.writeFileSync(path.join(config, "sessions", "1.json"),
 function run(...args) {
   return execFileSync(lister, args, { env: { ...process.env, CLAUDE_CONFIG_DIR: config }, encoding: "utf8" })
 }
+const page = (...args) => JSON.parse(run(...args))
 
 test("--closed lists terminal sessions no process holds, with how each stopped", () => {
-  const out = JSON.parse(run("--closed"))
+  const out = page("--closed").sessions
   const byId = Object.fromEntries(out.map((s) => [s.id, s]))
   assert.equal(byId[ids.limit].state, "limit")
   assert.equal(byId[ids.working].state, "working")
@@ -84,26 +85,56 @@ test("--closed lists terminal sessions no process holds, with how each stopped",
   assert.ok(out.every((s) => s.live === false), "a closed session is never running on the phone")
 })
 
-test("both tabs list at most 20 sessions, none older than a week, newest first", () => {
-  const closed = JSON.parse(run("--closed"))
-  assert.equal(closed.length, 20)
-  for (const id of [ids.limit, ids.working, ids.idle, ids.long]) assert.ok(closed.some((s) => s.id === id))
-  assert.ok(!closed.some((s) => s.id === old.cli))
-  assert.ok(closed.every((s, i) => i === 0 || closed[i - 1].mtime >= s.mtime))
-  assert.ok(!JSON.parse(run()).some((s) => s.id === old.phone))
+test("the first page holds at most 20 sessions from the last week, newest first", () => {
+  const first = page("--closed")
+  assert.equal(first.sessions.length, 20)
+  assert.equal(first.stoppedBy, "count")
+  assert.equal(first.more, true)
+  assert.equal(first.days, 7)
+  for (const id of [ids.limit, ids.working, ids.idle, ids.long]) assert.ok(first.sessions.some((s) => s.id === id))
+  assert.ok(first.sessions.every((s, i) => i === 0 || first.sessions[i - 1].mtime >= s.mtime))
+})
+
+test("--before pages back past the week with no repeats, and the last page says so", () => {
+  const first = page("--closed")
+  const second = page("--closed", "--before", first.before)
+  assert.equal(second.sessions.length, 6)
+  assert.ok(second.sessions.some((s) => s.id === old.cli), "later pages reach past the 7-day cutoff")
+  assert.ok(!second.sessions.some((s) => first.sessions.some((f) => f.id === s.id)))
+  assert.equal(second.more, false)
+  assert.equal(second.stoppedBy, "end")
+})
+
+test("a first page cut off by the week says so and offers older sessions", () => {
+  const first = page()
+  assert.deepEqual(first.sessions.map((s) => s.id), [ids.phone])
+  assert.equal(first.sessions[0].state, undefined, "phone sessions have no state")
+  assert.equal(first.stoppedBy, "days")
+  assert.equal(first.more, true)
+  assert.deepEqual(page("--before", first.before).sessions.map((s) => s.id), [old.phone])
+})
+
+test("exactly 20 matching sessions leave nothing more to load", () => {
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "phone-sessions-test-"))
+  try {
+    const dir = path.join(other, "projects", "p")
+    fs.mkdirSync(dir, { recursive: true })
+    for (let i = 0; i < 20; i++) transcript([(id) => user(id, "one of twenty"), said("Ok.")], 0, dir)
+    const out = JSON.parse(execFileSync(lister, ["--closed"],
+      { env: { ...process.env, CLAUDE_CONFIG_DIR: other }, encoding: "utf8" }))
+    assert.equal(out.sessions.length, 20)
+    assert.equal(out.more, false)
+    assert.equal(out.stoppedBy, "end")
+  } finally {
+    fs.rmSync(other, { recursive: true, force: true })
+  }
 })
 
 test("--closed reads a long transcript's first prompt and last turn", () => {
-  const long = JSON.parse(run("--closed")).find((s) => s.id === ids.long)
+  const long = page("--closed").sessions.find((s) => s.id === ids.long)
   assert.ok(fs.statSync(path.join(projects, ids.long + ".jsonl")).size > 1024 * 1024)
   assert.equal(long.prompt, "a long one")
   assert.equal(long.state, "working")
-})
-
-test("the default listing is still phone sessions only, without a state", () => {
-  const out = JSON.parse(run())
-  assert.deepEqual(out.map((s) => s.id), [ids.phone])
-  assert.equal(out[0].state, undefined)
 })
 
 test("--resume-info finds phone and terminal sessions", () => {

@@ -27,7 +27,17 @@ Item {
   property string filterText: ""
   property int selectedIndex: 0
   property var sessions: []
+  // Rows on screen: the filtered sessions, then a "Load older sessions" row while older ones exist.
   property var shown: []
+  property int matchCount: 0
+  // Paging state from the lister's last page.
+  property bool more: false
+  property string before: ""
+  property string stoppedBy: "end"
+  property int days: 7
+  // Bumped whenever the list is reset, so a lister result that arrives late is dropped.
+  property int generation: 0
+  property var pending: null
   property real nowSec: Date.now() / 1000
 
   property color background: Commons.Color.menu.background
@@ -51,8 +61,7 @@ Item {
     root.opened = true
     root.mode = "phone"
     root.filterText = ""
-    root.selectedIndex = 0
-    root.refresh()
+    root.reset()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
@@ -70,28 +79,73 @@ Item {
     else root.open("{}")
   }
 
-  function refresh() {
+  // Start over with the first page of the current tab.
+  function reset() {
+    root.generation++
+    root.sessions = []
+    root.more = false
+    root.before = ""
+    root.selectedIndex = 0
+    root.rebuild()
+    root.request("first")
+  }
+
+  function loadMore() {
+    if (root.loading || !root.more) return
+    root.request("more")
+  }
+
+  function request(kind) {
+    root.pending = { gen: root.generation, kind: kind, mode: root.mode, before: root.before }
     root.loading = true
-    // A run for the other tab is still going; loaded() starts this one when it ends.
-    if (lister.running) return
-    lister.forMode = root.mode
-    lister.command = [root.scriptDir + "/list-sessions"].concat(root.mode === "closed" ? ["--closed"] : [])
+    root.startPending()
+  }
+
+  // Runs the pending request once the previous run has both exited and been read: the output and
+  // the exit can arrive in either order, and each run's output must be read against its own request.
+  function startPending() {
+    if (!root.pending || lister.running || lister.req) return
+    var req = root.pending
+    root.pending = null
+    lister.req = req
+    lister.command = [root.scriptDir + "/list-sessions"]
+      .concat(req.mode === "closed" ? ["--closed"] : [])
+      .concat(req.kind === "more" ? ["--before", req.before] : [])
     lister.running = true
   }
 
   function loaded(raw) {
-    if (lister.forMode !== root.mode) {
-      Qt.callLater(root.refresh)
+    var req = lister.req
+    lister.req = null
+    if (root.pending) {
+      // The list was reset while this ran: drop the result and run the newer request.
+      root.startPending()
       return
     }
+    if (!req || req.gen !== root.generation) return
     root.loading = false
     root.nowSec = Date.now() / 1000
-    root.sessions = Model.parse(raw)
+    var page = Model.parsePage(raw)
+    var known = root.sessions.length
+    root.sessions = req.kind === "more" ? Model.merge(root.sessions, page.sessions) : page.sessions
+    root.more = page.more
+    root.before = page.before
+    root.stoppedBy = page.stoppedBy
+    root.days = page.days
     root.rebuild()
+    if (req.kind === "more") {
+      // Land on the first new row the filter keeps; else stay on the load row.
+      const added = root.sessions.slice(known).map(function(s) { return s.id })
+      const at = root.shown.findIndex(function(s) { return added.indexOf(s.id) !== -1 })
+      root.selectedIndex = at >= 0 ? at : Math.max(0, root.shown.length - 1)
+      list.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    }
   }
 
   function rebuild() {
-    root.shown = Model.filter(root.sessions, root.filterText)
+    var matches = Model.filter(root.sessions, root.filterText)
+    root.matchCount = matches.length
+    root.shown = root.more ? matches.concat([{ loadMore: true }]) : matches
     if (root.selectedIndex >= root.shown.length) root.selectedIndex = Math.max(0, root.shown.length - 1)
     Qt.callLater(function() { if (root.shown.length > 0) list.positionViewAtIndex(root.selectedIndex, ListView.Contain) })
   }
@@ -99,10 +153,7 @@ Item {
   function setMode(next) {
     if (next === root.mode) return
     root.mode = next
-    root.sessions = []
-    root.shown = []
-    root.selectedIndex = 0
-    root.refresh()
+    root.reset()
   }
 
   function setFilter(next) {
@@ -120,6 +171,10 @@ Item {
   function activate(index) {
     var s = root.shown[index]
     if (!s) return
+    if (s.loadMore) {
+      root.loadMore()
+      return
+    }
     // Close first so the overlay gives keyboard focus back before the terminal is typed into.
     root.dismiss()
     Quickshell.execDetached([root.scriptDir + "/open-session", s.cwd, s.id])
@@ -127,7 +182,8 @@ Item {
 
   Process {
     id: lister
-    property string forMode: ""
+    property var req: null
+    onRunningChanged: if (!running) root.startPending()
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.loaded(text)
@@ -262,7 +318,7 @@ Item {
             textFormat: Text.PlainText
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.loading ? "…" : String(root.shown.length)
+            text: root.loading && root.sessions.length === 0 ? "…" : String(root.matchCount)
             color: root.foreground
             opacity: 0.58
             font.family: root.fontFamily
@@ -303,7 +359,7 @@ Item {
                 Text {
                   width: parent.width
                   textFormat: Text.PlainText
-                  text: Model.label(row.modelData)
+                  text: row.modelData.loadMore ? (root.loading ? "Loading…" : "Load older sessions") : Model.label(row.modelData)
                   color: row.hasCursor ? root.selectedText : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.title
@@ -315,10 +371,13 @@ Item {
                   textFormat: Text.PlainText
                   // A live session is still running on the phone side; opening it here stops that.
                   // A closed one says how it stopped, so unfinished work stands out.
+                  // The load row says what the list holds so far instead.
                   readonly property bool attention: Model.needsAttention(row.modelData)
-                  text: row.modelData.folder + "  ·  " + Model.ago(row.modelData.mtime, root.nowSec)
-                        + (row.modelData.live ? "  ·  running on phone" : "")
-                        + (Model.stateLabel(row.modelData) ? "  ·  " + Model.stateLabel(row.modelData) : "")
+                  text: row.modelData.loadMore
+                        ? Model.loadCaption(root.sessions.length, root.stoppedBy, root.days, root.filterText !== "")
+                        : row.modelData.folder + "  ·  " + Model.ago(row.modelData.mtime, root.nowSec)
+                          + (row.modelData.live ? "  ·  running on phone" : "")
+                          + (Model.stateLabel(row.modelData) ? "  ·  " + Model.stateLabel(row.modelData) : "")
                   color: attention ? root.selectedText : root.foreground
                   opacity: attention ? 0.9 : 0.58
                   font.family: root.fontFamily
@@ -342,7 +401,7 @@ Item {
             visible: !root.loading && root.shown.length === 0
             textFormat: Text.PlainText
             text: root.filterText ? "No matches for “" + root.filterText + "”"
-                  : root.mode === "closed" ? "No closed terminal sessions in the last week" : "No phone sessions in the last week"
+                  : root.mode === "closed" ? "No closed terminal sessions" : "No phone sessions yet"
             color: root.foreground
             opacity: 0.7
             font.family: root.fontFamily
