@@ -6,6 +6,15 @@ All notable changes to this plugin are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
+### Added
+- add a Closed tab for reopening terminal sessions
+- list at most 20 sessions from the last week in each tab
+- load older sessions from a row at the end of the list
+- outline the Load older sessions row
+- rename the display name to Resume Sessions
+
 ## [0.1.2] - 2026-10-18
 
 ### Fixed
@@ -30,7 +39,8 @@ All notable changes to this plugin are listed here. The format follows
 - type a Shift-free resume command and look the folder up in the tab
 - never type into the terminal; hand-off only
 
-[Unreleased]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/stewartjarod/omarchy-phone-sessions/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/stewartjarod/omarchy-phone-sessions/releases/tag/v0.1.0
