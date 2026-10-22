@@ -41,7 +41,7 @@ jobs:
         omarchy_ref: [default, v4.0.4]
     steps:
       - name: Tools
-        run: pacman -Syu --noconfirm --needed git nodejs jq qt6-declarative
+        run: pacman -Syu --noconfirm --needed git nodejs jq python qt6-declarative
       - uses: actions/checkout@v4
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch Omarchy ${{ matrix.omarchy_ref }} Commons
