@@ -6,6 +6,14 @@ All notable changes to this plugin are listed here. The format follows
 
 ## [Unreleased]
 
+First published release of the 0.2.0 changes (see 0.2.0 below): the plugin is now **Resume
+Sessions**, with a Closed tab for reopening terminal sessions that were closed or stopped, and a
+"Load older sessions" row past the 7-day, 20-session first page.
+
+### Fixed
+- CI installs python, so the list-sessions tests run. v0.2.0 was tagged but its checks failed on
+  that, so it was never published as a GitHub release; 0.2.1 has the same plugin code.
+
 ## [0.2.0] - 2026-10-21
 
 ### Added
