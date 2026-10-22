@@ -85,6 +85,8 @@ Of ~5,400 recorded scans about half passed outright, and ~70% of the most popula
 - **Develop in a clone outside `~/.config/omarchy/plugins/`.** Every save under that directory reloads
   the shell and leaks ~127 MB. Work in `~/Projects/...`, then install with `omarchy plugin add <path-or-url>`
   or fast-forward the live checkout.
+- The picker (an overlay with `keepLoaded`) does not pick up edits via hot reload either: the shell logs
+  "reloading" but keeps the old Picker and SessionModel, so a change can look broken or absent.
 - Service plugins do not pick up edits via hot reload. Run `omarchy restart shell` **once**, then verify
   `pgrep -f "quickshell -n -p"`. A second quick restart races and leaves you with no bar.
 - IPC calls can hang ~25 s while the shell starts: `timeout 40 quickshell ipc -p /usr/share/omarchy/shell call <target> <fn>`.
