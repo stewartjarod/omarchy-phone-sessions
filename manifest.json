@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "stewartjarod.phone-sessions",
   "name": "Resume Sessions",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "stewartjarod",
   "license": "MIT",
   "description": "Hotkey picker for Claude Code sessions that aren't running: ones started from your phone, and terminal sessions that were closed or stopped. Opens the one you pick in your default terminal (a new tab where it can).",
