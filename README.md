@@ -1,12 +1,14 @@
-# Phone Sessions
+# Resume Sessions
 
-Hotkey picker for Claude Code sessions started from your phone; opens the one you pick in your default terminal (a new tab where it can).
+Hotkey picker for Claude Code sessions that aren't running: ones started from your phone, and terminal sessions that were closed or stopped. Opens the one you pick in your default terminal (a new tab where it can).
+
+The plugin id is `stewartjarod.phone-sessions`, from its first name, Phone Sessions; ids never change.
 
 Requires Omarchy 4.0.4 or newer (`OMARCHY_MIN_VERSION`).
 
 Sessions you start from the Claude app through `claude remote-control` run on this machine, but Claude
 Code's own `/resume` picker hides them: their transcripts are recorded as SDK sessions
-(`"entrypoint": "sdk-cli"`). This overlay lists exactly those sessions, newest first. Pick one and it opens
+(`"entrypoint": "sdk-cli"`). The **Phone** tab lists exactly those sessions, newest first. Pick one and it opens
 in your default terminal (the one `xdg-terminal-exec` and `omarchy default terminal` use), in the session's
 folder, running `claude --resume <id>`:
 
@@ -63,7 +65,7 @@ until a hand-off is waiting.
 Bind a key in `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + SHIFT + R", "Resume a phone session", "omarchy-shell shell toggle stewartjarod.phone-sessions")
+o.bind("SUPER + SHIFT + R", "Resume a Claude session", "omarchy-shell shell toggle stewartjarod.phone-sessions")
 ```
 
 ## Keys

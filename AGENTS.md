@@ -1,4 +1,4 @@
-# Phone Sessions (`stewartjarod.phone-sessions`)
+# Resume Sessions (`stewartjarod.phone-sessions`)
 
 An Omarchy shell plugin (Quickshell / QML). Read this before changing anything.
 

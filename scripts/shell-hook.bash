@@ -1,4 +1,4 @@
-# Phone Sessions hand-off. Source this at the END of ~/.bashrc, after anything that defines a
+# Resume Sessions hand-off. Source this at the END of ~/.bashrc, after anything that defines a
 # `claude` wrapper. When the picker has just opened a tab, open-session leaves the session id in
 # $XDG_RUNTIME_DIR/phone-sessions/next; the new tab's shell claims it here and resumes the
 # session, so nothing has to be typed into the terminal.
