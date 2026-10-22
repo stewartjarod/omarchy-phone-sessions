@@ -23,6 +23,13 @@ interactive shell, so shell functions such as a `claude` wrapper apply. Nothing 
 Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal
 stops the Remote Control process that is running it.
 
+Press `Tab` for the **Closed** tab: terminal sessions from the last three days that no running Claude
+process holds, because their terminal was closed or the machine restarted. Each row says how it stopped:
+**closed mid-task**, **stopped by a usage limit**, or **closed** after a finished reply. Opening one works
+the same way as a phone session. It resumes with no new message, so tell a session that was mid-task to
+carry on; anything it ran in the background (subagents, dev servers) is gone. A session counts as running
+when Claude Code's `~/.claude/sessions/<pid>.json` record names it and that process is still alive.
+
 Tested on Ghostty (tab and window) and foot. kitty and Alacritty use the same paths but have not been tried.
 
 ## Requirements
@@ -56,7 +63,7 @@ o.bind("SUPER + SHIFT + R", "Resume a phone session", "omarchy-shell shell toggl
 
 ## Keys
 
-`↑`/`↓` (or `Ctrl+P`/`Ctrl+N`) select · `Enter` open · type to filter by folder or prompt · `Esc` clears the filter, then closes.
+`↑`/`↓` (or `Ctrl+P`/`Ctrl+N`) select · `Enter` open · `Tab` switch between Phone and Closed · type to filter by folder or prompt · `Esc` clears the filter, then closes.
 
 ## Remove
 
@@ -74,7 +81,8 @@ chosen session id for the moment between picking and the new tab's shell startin
 
 ## Privacy
 
-The plugin reads `~/.claude/projects/*/*.jsonl` locally, to get each session's folder and first prompt.
+The plugin reads `~/.claude/projects/*/*.jsonl` locally, to get each session's folder, title, first prompt
+and how its last turn ended, and `~/.claude/sessions/*.json` to tell which sessions are still running.
 Nothing leaves the machine. It types nothing; the session id reaches the new tab through the runtime file
 above, or a new window through its command line.
 

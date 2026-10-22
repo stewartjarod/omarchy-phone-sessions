@@ -8,7 +8,8 @@ import qs.Ui
 import "SessionModel.js" as Model
 
 // Summoned picker (same surface and keys as the built-in emoji picker). Lists the Claude Code
-// sessions started from the phone and opens the chosen one in a new terminal tab.
+// sessions started from the phone and opens the chosen one in a new terminal tab. Tab switches
+// to terminal sessions whose terminal was closed (or that a reboot or usage limit stopped).
 Item {
   id: root
 
@@ -20,6 +21,8 @@ Item {
     Qt.resolvedUrl("scripts").toString().replace(/^file:\/\//, ""))
 
   property bool opened: false
+  // "phone": sessions started from the phone. "closed": terminal sessions no Claude process holds.
+  property string mode: "phone"
   property bool loading: false
   property string filterText: ""
   property int selectedIndex: 0
@@ -46,6 +49,7 @@ Item {
 
   function open(payloadJson) {
     root.opened = true
+    root.mode = "phone"
     root.filterText = ""
     root.selectedIndex = 0
     root.refresh()
@@ -67,13 +71,19 @@ Item {
   }
 
   function refresh() {
-    if (lister.running) return
     root.loading = true
-    lister.command = [root.scriptDir + "/list-sessions"]
+    // A run for the other tab is still going; loaded() starts this one when it ends.
+    if (lister.running) return
+    lister.forMode = root.mode
+    lister.command = [root.scriptDir + "/list-sessions"].concat(root.mode === "closed" ? ["--closed"] : [])
     lister.running = true
   }
 
   function loaded(raw) {
+    if (lister.forMode !== root.mode) {
+      Qt.callLater(root.refresh)
+      return
+    }
     root.loading = false
     root.nowSec = Date.now() / 1000
     root.sessions = Model.parse(raw)
@@ -84,6 +94,15 @@ Item {
     root.shown = Model.filter(root.sessions, root.filterText)
     if (root.selectedIndex >= root.shown.length) root.selectedIndex = Math.max(0, root.shown.length - 1)
     Qt.callLater(function() { if (root.shown.length > 0) list.positionViewAtIndex(root.selectedIndex, ListView.Contain) })
+  }
+
+  function setMode(next) {
+    if (next === root.mode) return
+    root.mode = next
+    root.sessions = []
+    root.shown = []
+    root.selectedIndex = 0
+    root.refresh()
   }
 
   function setFilter(next) {
@@ -108,6 +127,7 @@ Item {
 
   Process {
     id: lister
+    property string forMode: ""
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.loaded(text)
@@ -159,6 +179,9 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.dismiss()
             event.accepted = true
+          } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+            root.setMode(root.mode === "phone" ? "closed" : "phone")
+            event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
@@ -193,15 +216,45 @@ Item {
           Text {
             textFormat: Text.PlainText
             anchors.left: parent.left
-            anchors.right: count.left
+            anchors.right: tabs.left
             anchors.rightMargin: root.contentSpacing
             anchors.verticalCenter: parent.verticalCenter
-            text: root.filterText || "Phone sessions…"
+            text: root.filterText || (root.mode === "closed" ? "Closed sessions…" : "Phone sessions…")
             color: root.foreground
             opacity: root.filterText ? 1 : 0.58
             font.family: root.fontFamily
             font.pixelSize: Style.font.heading
             elide: Text.ElideRight
+          }
+
+          Row {
+            id: tabs
+            anchors.right: count.left
+            anchors.rightMargin: root.contentSpacing * 2
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: root.contentSpacing
+
+            Repeater {
+              model: [{ key: "phone", name: "Phone" }, { key: "closed", name: "Closed" }]
+
+              delegate: Text {
+                required property var modelData
+                readonly property bool active: modelData.key === root.mode
+                textFormat: Text.PlainText
+                text: modelData.name
+                color: root.foreground
+                opacity: active ? 1 : 0.45
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                font.underline: active
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.setMode(parent.modelData.key)
+                }
+              }
+            }
           }
 
           Text {
@@ -261,10 +314,13 @@ Item {
                   width: parent.width
                   textFormat: Text.PlainText
                   // A live session is still running on the phone side; opening it here stops that.
+                  // A closed one says how it stopped, so unfinished work stands out.
+                  readonly property bool attention: Model.needsAttention(row.modelData)
                   text: row.modelData.folder + "  ·  " + Model.ago(row.modelData.mtime, root.nowSec)
                         + (row.modelData.live ? "  ·  running on phone" : "")
-                  color: row.modelData.live ? root.selectedText : root.foreground
-                  opacity: row.modelData.live ? 0.9 : 0.58
+                        + (Model.stateLabel(row.modelData) ? "  ·  " + Model.stateLabel(row.modelData) : "")
+                  color: attention ? root.selectedText : root.foreground
+                  opacity: attention ? 0.9 : 0.58
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   elide: Text.ElideRight
@@ -285,7 +341,8 @@ Item {
             anchors.centerIn: parent
             visible: !root.loading && root.shown.length === 0
             textFormat: Text.PlainText
-            text: root.filterText ? "No matches for “" + root.filterText + "”" : "No phone sessions yet"
+            text: root.filterText ? "No matches for “" + root.filterText + "”"
+                  : root.mode === "closed" ? "No closed terminal sessions in the last 3 days" : "No phone sessions yet"
             color: root.foreground
             opacity: 0.7
             font.family: root.fontFamily
@@ -297,7 +354,7 @@ Item {
           width: parent.width
           height: root.footerHeight
           textFormat: Text.PlainText
-          text: "↑↓ select  ·  Enter open in terminal  ·  type to filter  ·  Esc close"
+          text: "↑↓ select  ·  Enter open in terminal  ·  Tab phone/closed  ·  type to filter  ·  Esc close"
           color: root.foreground
           opacity: 0.45
           font.family: root.fontFamily

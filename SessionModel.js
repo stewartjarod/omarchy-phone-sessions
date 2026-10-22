@@ -25,6 +25,18 @@ function filter(sessions, query) {
   })
 }
 
+// How a closed terminal session stopped (list-sessions --closed). Phone sessions have no state.
+var STATES = { limit: "stopped by a usage limit", working: "closed mid-task", idle: "closed" }
+
+function stateLabel(s) {
+  return (s && STATES[s.state]) || ""
+}
+
+// Worth a look: the phone is running it, or it stopped before it finished.
+function needsAttention(s) {
+  return !!(s && (s.live || s.state === "limit" || s.state === "working"))
+}
+
 function ago(mtimeSec, nowSec) {
   var d = Math.max(0, Math.floor(nowSec - mtimeSec))
   if (d < 60) return "just now"
@@ -33,4 +45,4 @@ function ago(mtimeSec, nowSec) {
   return Math.floor(d / 86400) + "d ago"
 }
 
-if (typeof module !== "undefined") module.exports = { parse, label, filter, ago }
+if (typeof module !== "undefined") module.exports = { parse, label, filter, stateLabel, needsAttention, ago }

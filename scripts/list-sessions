@@ -4,15 +4,26 @@
 Remote Control spawns phone sessions through the SDK, so their transcripts record
 entrypoint "sdk-cli"; terminal sessions record "cli". The interactive /resume
 picker hides SDK sessions, which is why this plugin exists.
+
+With --closed it prints terminal sessions from the last few days that no running
+Claude process holds (the terminal was closed, or the machine restarted), each with
+the state it stopped in: "limit" (a usage limit stopped it), "working" (closed
+mid-task) or "idle" (closed after a finished reply).
 """
 import glob
 import json
 import os
+import re
 import sys
 import time
 
 LIMIT = 60
 LIVE_SECONDS = 120
+CLOSED_DAYS = 3
+# --closed reads only a transcript's start (folder, id, first prompt) and end (title, last turn).
+HEAD_LINES = 400
+TAIL_BYTES = 256 * 1024
+USAGE_LIMIT = re.compile(r"hit your (session|usage|weekly)( usage)? limit", re.I)
 
 
 def text_of(content):
@@ -28,19 +39,45 @@ def is_real_prompt(text):
     return bool(t) and not t.startswith("<")
 
 
-def scan(path, phone_only=True):
-    entrypoint = cwd = session_id = prompt = title = None
+def has_tool_use(content):
+    return isinstance(content, list) and any(isinstance(c, dict) and c.get("type") == "tool_use" for c in content)
+
+
+def head_and_tail(fh):
+    """The first HEAD_LINES lines, then the whole lines of the last TAIL_BYTES."""
+    size = os.fstat(fh.fileno()).st_size
+    if size <= TAIL_BYTES * 2:
+        yield from fh
+        return
+    for _, line in zip(range(HEAD_LINES), fh):
+        yield line
+    fh.seek(size - TAIL_BYTES)
+    fh.readline()  # partial line
+    yield from fh
+
+
+def scan(path, entrypoint_wanted="sdk-cli", whole=True):
+    """Folder, id, title and first prompt of one transcript; None unless its entrypoint is
+    entrypoint_wanted (None accepts any). "state" says how the last turn ended. whole=False
+    reads only the start and end of a long transcript."""
+    entrypoint = cwd = session_id = prompt = title = last = said = None
     with open(path, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
+        for line in (fh if whole else head_and_tail(fh)):
             try:
                 rec = json.loads(line)
             except ValueError:
                 continue
             if entrypoint is None and rec.get("entrypoint"):
                 entrypoint = rec["entrypoint"]
-                if phone_only and entrypoint != "sdk-cli":
+                if entrypoint_wanted and entrypoint != entrypoint_wanted:
                     return None
             kind = rec.get("type")
+            if kind in ("user", "assistant") and not rec.get("isSidechain"):
+                content = (rec.get("message") or {}).get("content")
+                if content:
+                    last = (kind, has_tool_use(content))
+                    if kind == "assistant" and text_of(content).strip():
+                        said = text_of(content)
             if kind in ("custom-title", "ai-title"):
                 value = rec.get("customTitle") or rec.get("aiTitle") or rec.get("title")
                 # A name the user gave wins over a generated one.
@@ -53,9 +90,44 @@ def scan(path, phone_only=True):
                     text = text_of((rec.get("message") or {}).get("content"))
                     if is_real_prompt(text):
                         prompt = " ".join(text.split())[:240]
-    if (phone_only and entrypoint != "sdk-cli") or not cwd or not session_id:
+    if (entrypoint_wanted and entrypoint != entrypoint_wanted) or not cwd or not session_id:
         return None
-    return {"id": session_id, "cwd": cwd, "title": title[0] if title else "", "prompt": prompt or ""}
+    if said and USAGE_LIMIT.search(said):
+        state = "limit"
+    elif last == ("assistant", False):
+        state = "idle"
+    else:
+        state = "working"
+    return {"id": session_id, "cwd": cwd, "title": title[0] if title else "", "prompt": prompt or "",
+            "state": state}
+
+
+def proc_start(pid):
+    """The process's start time in clock ticks, or None if it is gone."""
+    try:
+        with open("/proc/%d/stat" % pid) as fh:
+            stat = fh.read()
+    except OSError:
+        return None
+    # Field 2 is the command name in parentheses and may itself contain spaces or ")".
+    fields = stat[stat.rfind(")") + 2:].split()
+    return fields[19] if len(fields) > 19 else None
+
+
+def running_ids(config):
+    """Session ids a live Claude process holds. Claude writes sessions/<pid>.json for each
+    running session; a record whose pid died, or was reused after a reboot, does not count."""
+    ids = set()
+    for path in glob.glob(os.path.join(config, "sessions", "*.json")):
+        try:
+            with open(path) as fh:
+                rec = json.load(fh)
+            start = proc_start(int(rec["pid"]))
+            if start is not None and start == str(rec.get("procStart")):
+                ids.add(rec["sessionId"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return ids
 
 
 def tab_name(info, limit=40):
@@ -74,7 +146,7 @@ def printable(text):
 
 def resume_info(root, session_id):
     for path in glob.glob(os.path.join(root, "*", glob.escape(session_id) + ".jsonl")):
-        info = scan(path, phone_only=False)
+        info = scan(path, entrypoint_wanted=None)
         if info:
             return info
     return None
@@ -82,7 +154,8 @@ def resume_info(root, session_id):
 
 def main():
     home = os.path.expanduser("~")
-    root = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude")), "projects")
+    config = os.environ.get("CLAUDE_CONFIG_DIR", os.path.join(home, ".claude"))
+    root = os.path.join(config, "projects")
 
     # list-sessions --resume-info <id>: the session's folder, then a tab name (used by resume-here).
     # list-sessions --set-title <id>: set the terminal's title to the tab name (used by open-session).
@@ -98,29 +171,40 @@ def main():
         print(printable(tab_name(info)))
         return
 
+    closed = sys.argv[1:] == ["--closed"]
+    now = time.time()
+    running = running_ids(config) if closed else set()
+
     files = []
     for path in glob.glob(os.path.join(root, "*", "*.jsonl")):
         try:
             st = os.stat(path)
         except OSError:
             continue
-        if st.st_size:
-            files.append((st.st_mtime, path))
+        if not st.st_size:
+            continue
+        # Cheap filters first: transcripts can be many megabytes.
+        if closed and (now - st.st_mtime > CLOSED_DAYS * 86400
+                       or os.path.basename(path)[:-len(".jsonl")] in running):
+            continue
+        files.append((st.st_mtime, path))
     files.sort(reverse=True)
 
-    now = time.time()
     out = []
     for mtime, path in files:
         try:
-            info = scan(path)
+            info = scan(path, "cli", whole=False) if closed else scan(path)
         except OSError:
             continue
-        if not info or not os.path.isdir(info["cwd"]):
+        if not info or not os.path.isdir(info["cwd"]) or info["id"] in running:
             continue
         cwd = info["cwd"]
         info["folder"] = "~" + cwd[len(home):] if cwd == home or cwd.startswith(home + "/") else cwd
         info["mtime"] = int(mtime)
-        info["live"] = now - mtime < LIVE_SECONDS
+        # "live" means running on the phone; a closed terminal session never is.
+        info["live"] = not closed and now - mtime < LIVE_SECONDS
+        if not closed:
+            del info["state"]
         out.append(info)
         if len(out) >= LIMIT:
             break

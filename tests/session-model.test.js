@@ -45,3 +45,19 @@ test("ago buckets", () => {
   assert.equal(Model.ago(0, 2 * 86400), "2d ago")
   assert.equal(Model.ago(100, 50), "just now")
 })
+
+test("stateLabel names how a closed session stopped", () => {
+  assert.equal(Model.stateLabel({ state: "limit" }), "stopped by a usage limit")
+  assert.equal(Model.stateLabel({ state: "working" }), "closed mid-task")
+  assert.equal(Model.stateLabel({ state: "idle" }), "closed")
+  assert.equal(Model.stateLabel({}), "")
+  assert.equal(Model.stateLabel(null), "")
+})
+
+test("needsAttention flags live phone sessions and unfinished closed ones", () => {
+  assert.equal(Model.needsAttention({ live: true }), true)
+  assert.equal(Model.needsAttention({ state: "working" }), true)
+  assert.equal(Model.needsAttention({ state: "limit" }), true)
+  assert.equal(Model.needsAttention({ state: "idle" }), false)
+  assert.equal(Model.needsAttention({ live: false }), false)
+})
