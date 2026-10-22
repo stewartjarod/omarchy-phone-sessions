@@ -342,7 +342,7 @@ Item {
             visible: !root.loading && root.shown.length === 0
             textFormat: Text.PlainText
             text: root.filterText ? "No matches for “" + root.filterText + "”"
-                  : root.mode === "closed" ? "No closed terminal sessions in the last 3 days" : "No phone sessions yet"
+                  : root.mode === "closed" ? "No closed terminal sessions in the last week" : "No phone sessions in the last week"
             color: root.foreground
             opacity: 0.7
             font.family: root.fontFamily

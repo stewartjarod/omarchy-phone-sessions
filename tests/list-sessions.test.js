@@ -48,6 +48,18 @@ const ids = {
   phone: transcript([(id) => user(id, "from the phone", "sdk-cli"), said("Hi.")]),
 }
 
+// Older than a week: neither tab lists them. A day old: enough of them to hit the 20-row limit.
+const age = (id, days) => {
+  const t = new Date(Date.now() - days * 86400 * 1000)
+  fs.utimesSync(path.join(projects, id + ".jsonl"), t, t)
+  return id
+}
+const old = {
+  cli: age(transcript([(id) => user(id, "an old one"), said("Done.")]), 8),
+  phone: age(transcript([(id) => user(id, "an old phone one", "sdk-cli"), said("Done.")]), 8),
+}
+for (let i = 0; i < 21; i++) age(transcript([(id) => user(id, "filler " + i), said("Ok.")]), 1)
+
 // This test process stands in for the Claude process that holds the "running" session.
 const stat = fs.readFileSync("/proc/self/stat", "utf8")
 const procStart = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]
@@ -70,6 +82,15 @@ test("--closed lists terminal sessions no process holds, with how each stopped",
   assert.equal(byId[ids.running], undefined, "a session a live process holds is not closed")
   assert.equal(byId[ids.phone], undefined, "phone sessions belong to the other tab")
   assert.ok(out.every((s) => s.live === false), "a closed session is never running on the phone")
+})
+
+test("both tabs list at most 20 sessions, none older than a week, newest first", () => {
+  const closed = JSON.parse(run("--closed"))
+  assert.equal(closed.length, 20)
+  for (const id of [ids.limit, ids.working, ids.idle, ids.long]) assert.ok(closed.some((s) => s.id === id))
+  assert.ok(!closed.some((s) => s.id === old.cli))
+  assert.ok(closed.every((s, i) => i === 0 || closed[i - 1].mtime >= s.mtime))
+  assert.ok(!JSON.parse(run()).some((s) => s.id === old.phone))
 })
 
 test("--closed reads a long transcript's first prompt and last turn", () => {

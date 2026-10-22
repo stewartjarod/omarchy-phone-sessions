@@ -20,10 +20,12 @@ sets its own title. That text is set with a terminal escape sequence and never p
 where other users on the machine could read it. The session always runs in your
 interactive shell, so shell functions such as a `claude` wrapper apply. Nothing is typed into a terminal.
 
+Each tab lists up to 20 sessions from the last week, newest first.
+
 Rows marked **running on phone** were written to in the last two minutes. Resuming one in the terminal
 stops the Remote Control process that is running it.
 
-Press `Tab` for the **Closed** tab: terminal sessions from the last three days that no running Claude
+Press `Tab` for the **Closed** tab: terminal sessions that no running Claude
 process holds, because their terminal was closed or the machine restarted. Each row says how it stopped:
 **closed mid-task**, **stopped by a usage limit**, or **closed** after a finished reply. Opening one works
 the same way as a phone session. It resumes with no new message, so tell a session that was mid-task to

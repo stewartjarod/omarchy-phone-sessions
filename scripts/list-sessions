@@ -5,7 +5,7 @@ Remote Control spawns phone sessions through the SDK, so their transcripts recor
 entrypoint "sdk-cli"; terminal sessions record "cli". The interactive /resume
 picker hides SDK sessions, which is why this plugin exists.
 
-With --closed it prints terminal sessions from the last few days that no running
+With --closed it prints terminal sessions that no running
 Claude process holds (the terminal was closed, or the machine restarted), each with
 the state it stopped in: "limit" (a usage limit stopped it), "working" (closed
 mid-task) or "idle" (closed after a finished reply).
@@ -17,10 +17,11 @@ import re
 import sys
 import time
 
-LIMIT = 60
+# Both tabs list at most LIMIT sessions from the last MAX_AGE_DAYS, newest first.
+LIMIT = 20
+MAX_AGE_DAYS = 7
 LIVE_SECONDS = 120
-CLOSED_DAYS = 3
-# --closed reads only a transcript's start (folder, id, first prompt) and end (title, last turn).
+# Listing reads only a transcript's start (folder, id, first prompt) and end (title, last turn).
 HEAD_LINES = 400
 TAIL_BYTES = 256 * 1024
 USAGE_LIMIT = re.compile(r"hit your (session|usage|weekly)( usage)? limit", re.I)
@@ -184,8 +185,7 @@ def main():
         if not st.st_size:
             continue
         # Cheap filters first: transcripts can be many megabytes.
-        if closed and (now - st.st_mtime > CLOSED_DAYS * 86400
-                       or os.path.basename(path)[:-len(".jsonl")] in running):
+        if now - st.st_mtime > MAX_AGE_DAYS * 86400 or os.path.basename(path)[:-len(".jsonl")] in running:
             continue
         files.append((st.st_mtime, path))
     files.sort(reverse=True)
@@ -193,7 +193,7 @@ def main():
     out = []
     for mtime, path in files:
         try:
-            info = scan(path, "cli", whole=False) if closed else scan(path)
+            info = scan(path, "cli" if closed else "sdk-cli", whole=False)
         except OSError:
             continue
         if not info or not os.path.isdir(info["cwd"]) or info["id"] in running:
